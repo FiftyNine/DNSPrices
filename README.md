@@ -3,4 +3,4 @@ This is a small srcipt to grab prices from a local electronics store and save th
 
 requires following packages:
 github.com/mattn/go-sqlite3
-github.com/extrame/xls
+github.com/sergeilem/xls

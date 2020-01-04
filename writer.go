@@ -1,4 +1,4 @@
-package dnsprices
+package main
 
 import (
 	"context"
@@ -12,16 +12,16 @@ import (
 
 // DNSWriter allows parser to write extracted data for a specific item to a storage
 type DNSWriter interface {
-	Write(id int, price int, bonus int) error
+	Write(id int, price int, bonus int) (bool, error)
 	Close()
 }
 
 type consoleWriter struct {
 }
 
-func (*consoleWriter) Write(id int, price int, bonus int) error {
+func (*consoleWriter) Write(id int, price int, bonus int) (bool, error) {
 	fmt.Printf("Id = %10d, price = %7d, bonus = %5d\r\n", id, price, bonus)
-	return nil
+	return true, nil
 }
 
 func (*consoleWriter) Close() {
@@ -111,7 +111,8 @@ func (writer *SqliteWriter) open() error {
 	return err
 }
 
-func (writer *SqliteWriter) Write(id int, price int, bonus int) error {
+func (writer *SqliteWriter) Write(id int, price int, bonus int) (bool, error) {
+	var inserted = false
 	if writer.db == nil && !writer.fail {
 		if err := writer.open(); err != nil {
 			fmt.Println(err)
@@ -119,16 +120,18 @@ func (writer *SqliteWriter) Write(id int, price int, bonus int) error {
 		}
 	}
 	if writer.fail {
-		return errors.New("No connection")
+		return false, errors.New("No connection")
 	}
 	row := writer.tx.QueryRow("SELECT price, bonus FROM dns WHERE id = ? AND cityID = ? ORDER BY date DESC LIMIT 1", id, writer.cityID)
 	var err error
 	var oldPrice, oldBonus int
+
 	err = row.Scan(&oldPrice, &oldBonus)
 	if err == sql.ErrNoRows || oldPrice != price || oldBonus != bonus {
 		_, err = writer.tx.Exec("INSERT INTO dns VALUES (?, ?, ?, ?, ?)", id, price, bonus, writer.cityID, writer.time)
+		inserted = err != nil
 	}
-	return err
+	return inserted, err
 }
 
 /*func (writer *SqliteWriter) save() error {

@@ -1,4 +1,4 @@
-package dnsprices
+package main
 
 import (
 	"errors"
@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/extrame/xls"
+	"github.com/sergeilem/xls"
 )
 
 func findData(sheet *xls.WorkSheet) (firstRow int, idCol int, priceCol int, bonusCol int, err error) {
@@ -53,9 +53,9 @@ func extractData(sheet *xls.WorkSheet, writer DNSWriter, firstRow int, idCol int
 			continue
 		}
 		extracted++
-		if err := writer.Write(id, price, bonus); err == nil {
+		if success, err := writer.Write(id, price, bonus); err == nil && success {
 			written++
-		} else {
+		} else if err != nil {
 			fmt.Printf("%s (%d/%d/%d)\r\n", err, id, price, bonus)
 		}
 	}
