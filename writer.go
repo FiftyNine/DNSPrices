@@ -129,7 +129,7 @@ func (writer *SqliteWriter) Write(id int, price int, bonus int) (bool, error) {
 	err = row.Scan(&oldPrice, &oldBonus)
 	if err == sql.ErrNoRows || oldPrice != price || oldBonus != bonus {
 		_, err = writer.tx.Exec("INSERT INTO dns VALUES (?, ?, ?, ?, ?)", id, price, bonus, writer.cityID, writer.time)
-		inserted = err != nil
+		inserted = err == nil
 	}
 	return inserted, err
 }
