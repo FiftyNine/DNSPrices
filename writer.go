@@ -12,7 +12,7 @@ import (
 
 // DNSWriter allows parser to write extracted data for a specific item to a storage
 type DNSWriter interface {
-	Write(id int, price int, bonus int) (bool, error)
+	Write(id int, name string, price int, bonus int) (bool, bool, error)
 	Close()
 }
 
@@ -49,13 +49,21 @@ func (writer *SqliteWriter) initDB() error {
 		CREATE TABLE IF NOT EXISTS dns_cities (
 			id integer PRIMARY KEY, 
 			name text UNIQUE);
-		CREATE TABLE IF NOT EXISTS dns (
-			id integer NOT NULL, 
+		CREATE TABLE IF NOT EXISTS dns_items (
+			id integer PRIMARY KEY, 
+			name text);			
+		CREATE TABLE IF NOT EXISTS dns_prices (
+			itemId integer CONSTRAINT FK_DNSITEMID REFERENCES dns_items(id) ON UPDATE CASCADE ON DELETE CASCADE, 
+			cityId integer CONSTRAINT FK_DNSCITYID REFERENCES dns_cities(id) ON UPDATE CASCADE ON DELETE CASCADE, 			
 			price integer NOT NULL, 
-			bonus integer, 
-			cityId integer CONSTRAINT FK_CITYID REFERENCES dns_cities(id) ON UPDATE CASCADE ON DELETE CASCADE, 
 			date datetime NOT NULL,
-			CONSTRAINT UQ_DNS UNIQUE (id, cityId, date));`)
+			CONSTRAINT UQ_DNS UNIQUE (itemId, cityId, date));
+		CREATE TABLE IF NOT EXISTS dns_bonuses (
+			itemId integer CONSTRAINT FK_DNSITEMID REFERENCES dns_items(id) ON UPDATE CASCADE ON DELETE CASCADE, 
+			cityId integer CONSTRAINT FK_DNSCITYID REFERENCES dns_cities(id) ON UPDATE CASCADE ON DELETE CASCADE,
+			bonus integer NOT NULL,
+			date datetime NOT NULL,
+			CONSTRAINT UQ_DNS UNIQUE (itemId, cityId, date));`)
 	return err
 }
 
@@ -111,8 +119,9 @@ func (writer *SqliteWriter) open() error {
 	return err
 }
 
-func (writer *SqliteWriter) Write(id int, price int, bonus int) (bool, error) {
-	var inserted = false
+func (writer *SqliteWriter) Write(id int, name string, price int, bonus int) (bool, bool, error) {
+	var priceChanged = false
+	var bonusChanged = false
 	if writer.db == nil && !writer.fail {
 		if err := writer.open(); err != nil {
 			fmt.Println(err)
@@ -120,18 +129,28 @@ func (writer *SqliteWriter) Write(id int, price int, bonus int) (bool, error) {
 		}
 	}
 	if writer.fail {
-		return false, errors.New("No connection")
+		return false, false, errors.New("No connection")
 	}
-	row := writer.tx.QueryRow("SELECT price, bonus FROM dns WHERE id = ? AND cityID = ? ORDER BY date DESC LIMIT 1", id, writer.cityID)
+	writer.tx.Exec("INSERT INTO dns_items VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET name = ? WHERE id = ? AND name is NULL", id, name, name, id)
+
 	var err error
 	var oldPrice, oldBonus int
+	row := writer.tx.QueryRow("SELECT price FROM dns_prices WHERE itemId = ? AND cityID = ? ORDER BY date DESC LIMIT 1", id, writer.cityID)
 
-	err = row.Scan(&oldPrice, &oldBonus)
-	if err == sql.ErrNoRows || oldPrice != price || oldBonus != bonus {
-		_, err = writer.tx.Exec("INSERT INTO dns VALUES (?, ?, ?, ?, ?)", id, price, bonus, writer.cityID, writer.time)
-		inserted = err == nil
+	err = row.Scan(&oldPrice)
+	if err == sql.ErrNoRows || oldPrice != price {
+		_, err = writer.tx.Exec("INSERT INTO dns_prices VALUES (?, ?, ?, ?)", id, writer.cityID, price, writer.time)
+		priceChanged = err == nil
 	}
-	return inserted, err
+	if err == nil {
+		row = writer.tx.QueryRow("SELECT bonus FROM dns_bonuses WHERE itemId = ? AND cityID = ? ORDER BY date DESC LIMIT 1", id, writer.cityID)
+		err = row.Scan(&oldBonus)
+		if err == sql.ErrNoRows || oldBonus != bonus {
+			_, err = writer.tx.Exec("INSERT INTO dns_bonuses VALUES (?, ?, ?, ?)", id, writer.cityID, bonus, writer.time)
+			bonusChanged = err == nil
+		}
+	}
+	return priceChanged, bonusChanged, err
 }
 
 /*func (writer *SqliteWriter) save() error {

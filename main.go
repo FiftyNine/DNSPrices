@@ -10,7 +10,7 @@ import (
 	"github.com/sergeilem/xls"
 )
 
-func findData(sheet *xls.WorkSheet) (firstRow int, idCol int, priceCol int, bonusCol int, err error) {
+func findData(sheet *xls.WorkSheet) (firstRow int, idCol int, nameCol int, priceCol int, bonusCol int, err error) {
 	var i int
 	for ; i < int(sheet.MaxRow); i++ {
 		idCol = -1
@@ -35,38 +35,44 @@ func findData(sheet *xls.WorkSheet) (firstRow int, idCol int, priceCol int, bonu
 		}
 	}
 	if i < int(sheet.MaxRow) {
-		return i, idCol, priceCol, bonusCol, nil
+		return i, idCol, idCol + 1, priceCol, bonusCol, nil
 	}
-	return -1, -1, -1, -1, errors.New("No entries found")
+	return -1, -1, -1, -1, -1, errors.New("No entries found")
 }
 
-func extractData(sheet *xls.WorkSheet, writer DNSWriter, firstRow int, idCol int, priceCol int, bonusCol int) (int, int) {
+func extractData(sheet *xls.WorkSheet, writer DNSWriter, firstRow int, idCol int, nameCol int, priceCol int, bonusCol int) (int, int, int) {
 	// var r *xls.Row
 	var extracted int
-	var written int
+	var newPrices, newBonuses int
 	for i := firstRow; i < int(sheet.MaxRow); i++ {
 		r := sheet.Row(i)
 		id, err1 := strconv.Atoi(r.Col(idCol))
 		price, err2 := strconv.Atoi(r.Col(priceCol))
 		bonus, err3 := strconv.Atoi(r.Col(bonusCol))
+		name := r.Col(nameCol)
 		if err1 != nil || err2 != nil || err3 != nil {
 			continue
 		}
 		extracted++
-		if success, err := writer.Write(id, price, bonus); err == nil && success {
-			written++
+		if priceChanged, bonusChanged, err := writer.Write(id, name, price, bonus); err == nil {
+			if priceChanged {
+				newPrices++
+			}
+			if bonusChanged {
+				newBonuses++
+			}
 		} else if err != nil {
 			fmt.Printf("%s (%d/%d/%d)\r\n", err, id, price, bonus)
 		}
 	}
-	return extracted, written
+	return extracted, newPrices, newBonuses
 }
 
 func parseSheet(sheet *xls.WorkSheet, writer DNSWriter) {
 	fmt.Printf("Processing \"%s\"...\r\n", sheet.Name)
-	if firstRow, idCol, priceCol, bonusCol, err := findData(sheet); err == nil {
-		extracted, saved := extractData(sheet, writer, firstRow, idCol, priceCol, bonusCol)
-		fmt.Printf("Extracted %d, saved %d\r\n", extracted, saved)
+	if firstRow, idCol, nameCol, priceCol, bonusCol, err := findData(sheet); err == nil {
+		extracted, prices, bonuses := extractData(sheet, writer, firstRow, idCol, nameCol, priceCol, bonusCol)
+		fmt.Printf("Extracted %d, prices changed %d, bonuses changed %d\r\n", extracted, prices, bonuses)
 	} else {
 		fmt.Println(err)
 	}
